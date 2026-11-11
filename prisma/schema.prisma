@@ -1,0 +1,247 @@
+// CA Workspace Manager — database schema (PostgreSQL)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  ADMIN
+  EMPLOYEE
+}
+
+enum Constitution {
+  INDIVIDUAL
+  PROPRIETORSHIP
+  PARTNERSHIP
+  LLP
+  PRIVATE_LIMITED
+  PUBLIC_LIMITED
+  OPC
+  HUF
+  TRUST
+  SOCIETY
+  AOP_BOI
+  OTHER
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  REVIEW
+  COMPLETED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum Recurrence {
+  NONE
+  MONTHLY
+  QUARTERLY
+  HALF_YEARLY
+  YEARLY
+}
+
+enum LogType {
+  CALL
+  MEETING
+  EMAIL
+  WHATSAPP
+  NOTICE
+  VISIT
+  OTHER
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(EMPLOYEE)
+  designation  String?
+  mobile       String?
+  joinedOn     DateTime? @db.Date
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  assignedTasks    Task[]          @relation("TaskAssignee")
+  createdTasks     Task[]          @relation("TaskCreator")
+  comments         TaskComment[]
+  activities       TaskActivity[]
+  sentMessages     Message[]       @relation("MessageSender")
+  receivedMessages Message[]       @relation("MessageRecipient")
+  clientLogs       ClientLog[]
+  reminders        Reminder[]
+  notifications    Notification[]
+  managedClients   Client[]        @relation("ClientManager")
+}
+
+model Client {
+  id           String       @id @default(cuid())
+  name         String
+  constitution Constitution @default(PROPRIETORSHIP)
+  gstin        String?
+  pan          String?
+  email        String?
+  mobile       String?
+  address      String?
+  city         String?
+  state        String?
+  pincode      String?
+  notes        String?
+  active       Boolean      @default(true)
+  managerId    String?
+  manager      User?        @relation("ClientManager", fields: [managerId], references: [id], onDelete: SetNull)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  partners Partner[]
+  tasks    Task[]
+  logs     ClientLog[]
+
+  @@index([name])
+}
+
+/// Partner / director / proprietor / trustee / karta of a client
+model Partner {
+  id          String  @id @default(cuid())
+  clientId    String
+  client      Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name        String
+  designation String?
+  email       String?
+  mobile      String?
+  pan         String?
+  din         String?
+
+  @@index([clientId])
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  category    String?
+  status      TaskStatus @default(PENDING)
+  priority    Priority   @default(MEDIUM)
+  dueDate     DateTime?  @db.Date
+  recurrence  Recurrence @default(NONE)
+  /// Financial year / period the task relates to, e.g. "Oct 2026" or "FY 2025-26"
+  period      String?
+  completedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  assigneeId  String?
+  assignee    User?   @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  clientId    String?
+  client      Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  createdById String?
+  createdBy   User?   @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  /// For recurring tasks: the task this occurrence was spawned from
+  previousId String? @unique
+  previous   Task?   @relation("TaskRecurrence", fields: [previousId], references: [id], onDelete: SetNull)
+  next       Task?   @relation("TaskRecurrence")
+
+  comments   TaskComment[]
+  activities TaskActivity[]
+
+  @@index([status])
+  @@index([assigneeId])
+  @@index([clientId])
+  @@index([dueDate])
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+}
+
+model TaskActivity {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action    String
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+}
+
+model Message {
+  id          String    @id @default(cuid())
+  senderId    String
+  sender      User      @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipientId String
+  recipient   User      @relation("MessageRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  subject     String?
+  body        String
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([senderId, recipientId])
+  @@index([recipientId, readAt])
+}
+
+model ClientLog {
+  id            String   @id @default(cuid())
+  clientId      String
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  date          DateTime @db.Date
+  type          LogType  @default(CALL)
+  summary       String
+  contactPerson String?
+  followUpOn    DateTime? @db.Date
+  loggedById    String?
+  loggedBy      User?    @relation(fields: [loggedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now())
+
+  @@index([clientId])
+  @@index([date])
+}
+
+model Reminder {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  note      String?
+  remindOn  DateTime @db.Date
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, done])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
