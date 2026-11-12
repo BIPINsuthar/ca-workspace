@@ -3,7 +3,7 @@ import { AlarmClock, AlertTriangle, ArrowRight, Bell, Building2, CalendarClock, 
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { addDays, fmtDate, fmtDateTime, relativeDue, STATUSES, todayIST, ymd, type StatusKey } from "@/lib/format";
-import { CompletedArea, StatusDonut, WorkloadBars } from "@/components/charts";
+import { CompletedArea, StatusDonut, WorkloadBars } from "@/components/charts-lazy";
 import { Avatar, PageHeader, PriorityBadge, STATUS_COLOR, cx } from "@/components/ui";
 
 export const metadata = { title: "Dashboard" };

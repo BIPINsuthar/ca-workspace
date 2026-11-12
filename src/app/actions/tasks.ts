@@ -57,22 +57,25 @@ export async function saveTask(_: ActionState, fd: FormData): Promise<ActionStat
 
   if (id) {
     const before = await loadTaskFor(me, id);
-    await db.task.update({ where: { id }, data });
     const changes: string[] = [];
     if (before.assigneeId !== data.assigneeId) changes.push("reassigned the task");
     if (ymd(before.dueDate) !== (due ?? "")) changes.push(`changed due date to ${due ? fmtDate(due) : "none"}`);
     if (before.priority !== data.priority) changes.push(`set priority to ${PRIORITIES[data.priority]}`);
     if (!changes.length) changes.push("edited the task");
-    await db.taskActivity.createMany({ data: changes.map((action) => ({ taskId: id, actorId: me.id, action })) });
-    if (data.assigneeId && before.assigneeId !== data.assigneeId) {
-      await notify(data.assigneeId, me.id, `${me.name} assigned you: ${title}`, `/tasks/${id}`, due ? `Due ${fmtDate(due)}` : undefined);
-    }
+    await Promise.all([
+      db.task.update({ where: { id }, data }),
+      db.taskActivity.createMany({ data: changes.map((action) => ({ taskId: id, actorId: me.id, action })) }),
+      data.assigneeId && before.assigneeId !== data.assigneeId
+        ? notify(data.assigneeId, me.id, `${me.name} assigned you: ${title}`, `/tasks/${id}`, due ? `Due ${fmtDate(due)}` : undefined)
+        : null,
+    ]);
     revalidateTasks(id);
     return ok("Task saved.", id);
   }
 
-  const t = await db.task.create({ data: { ...data, status: status as TaskStatus, createdById: me.id } });
-  await db.taskActivity.create({ data: { taskId: t.id, actorId: me.id, action: "created this task" } });
+  const t = await db.task.create({
+    data: { ...data, status: status as TaskStatus, createdById: me.id, activities: { create: { actorId: me.id, action: "created this task" } } },
+  });
   if (assigneeId) await notify(assigneeId, me.id, `${me.name} assigned you: ${title}`, `/tasks/${t.id}`, due ? `Due ${fmtDate(due)}` : undefined);
   revalidateTasks();
   return ok("Task created.", t.id);
@@ -84,33 +87,37 @@ export async function setTaskStatus(id: string, status: TaskStatus) {
   const task = await loadTaskFor(me, id);
   if (task.status === status) return;
 
-  await db.task.update({ where: { id }, data: { status, completedAt: status === "COMPLETED" ? new Date() : null } });
-  await db.taskActivity.create({ data: { taskId: id, actorId: me.id, action: `moved to ${STATUSES[status]}` } });
-
-  // Spawn the next occurrence of a recurring compliance task.
-  if (status === "COMPLETED" && task.recurrence !== "NONE" && task.dueDate) {
-    const exists = await db.task.findUnique({ where: { previousId: id } });
+  const spawnNext = async () => {
+    // Spawn the next occurrence of a recurring compliance task.
+    if (status !== "COMPLETED" || task.recurrence === "NONE" || !task.dueDate) return;
     const nextDue = nextOccurrence(ymd(task.dueDate), task.recurrence);
-    if (!exists && nextDue) {
-      const n = await db.task.create({
+    if (!nextDue || (await db.task.findUnique({ where: { previousId: id }, select: { id: true } }))) return;
+    await Promise.all([
+      db.task.create({
         data: {
           title: task.title, description: task.description, category: task.category, clientId: task.clientId,
           assigneeId: task.assigneeId, priority: task.priority, recurrence: task.recurrence,
           dueDate: toDbDate(nextDue), createdById: task.createdById, previousId: id,
+          activities: { create: { actorId: me.id, action: `created automatically (repeats ${RECURRENCES[task.recurrence].toLowerCase()})` } },
         },
-      });
-      await db.taskActivity.createMany({ data: [
-        { taskId: n.id, actorId: me.id, action: `created automatically (repeats ${RECURRENCES[task.recurrence].toLowerCase()})` },
-        { taskId: id, actorId: me.id, action: `next occurrence scheduled for ${fmtDate(nextDue)}` },
-      ] });
-    }
-  }
+      }),
+      db.taskActivity.create({ data: { taskId: id, actorId: me.id, action: `next occurrence scheduled for ${fmtDate(nextDue)}` } }),
+    ]);
+  };
 
-  // Tell the other side.
-  const recipients = new Set<string>();
-  if (task.assigneeId) recipients.add(task.assigneeId);
-  if (task.createdById) recipients.add(task.createdById);
-  for (const uid of recipients) await notify(uid, me.id, `${me.name} moved "${task.title}" to ${STATUSES[status]}`, `/tasks/${id}`);
+  // Independent writes run in parallel: one round trip instead of several.
+  await Promise.all([
+    db.task.update({
+      where: { id },
+      data: {
+        status,
+        completedAt: status === "COMPLETED" ? new Date() : null,
+        activities: { create: { actorId: me.id, action: `moved to ${STATUSES[status]}` } },
+      },
+    }),
+    spawnNext(),
+    notify([task.assigneeId, task.createdById], me.id, `${me.name} moved "${task.title}" to ${STATUSES[status]}`, `/tasks/${id}`),
+  ]);
 
   revalidateTasks(id);
 }
@@ -128,15 +135,20 @@ export async function addComment(_: ActionState, fd: FormData): Promise<ActionSt
   const taskId = str(fd, "taskId");
   const body = str(fd, "body");
   if (!taskId || !body) return fail("Write a comment first.");
-  const task = await loadTaskFor(me, taskId);
-  await db.taskComment.create({ data: { taskId, body, authorId: me.id } });
-
-  const recipients = new Set<string>();
-  if (task.assigneeId) recipients.add(task.assigneeId);
-  if (task.createdById) recipients.add(task.createdById);
-  const prior = await db.taskComment.findMany({ where: { taskId }, select: { authorId: true }, distinct: ["authorId"] });
-  prior.forEach((c) => c.authorId && recipients.add(c.authorId));
-  for (const uid of recipients) await notify(uid, me.id, `${me.name} commented on "${task.title}"`, `/tasks/${taskId}`, body.slice(0, 140));
+  const [task, prior] = await Promise.all([
+    loadTaskFor(me, taskId),
+    db.taskComment.findMany({ where: { taskId }, select: { authorId: true }, distinct: ["authorId"] }),
+  ]);
+  await Promise.all([
+    db.taskComment.create({ data: { taskId, body, authorId: me.id } }),
+    notify(
+      [task.assigneeId, task.createdById, ...prior.map((c) => c.authorId)],
+      me.id,
+      `${me.name} commented on "${task.title}"`,
+      `/tasks/${taskId}`,
+      body.slice(0, 140),
+    ),
+  ]);
 
   revalidatePath(`/tasks/${taskId}`);
   return ok();

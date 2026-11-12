@@ -1,6 +1,11 @@
 // Runs before the build: checks DATABASE_URL / DIRECT_URL / AUTH_SECRET and explains problems
 // in plain words. Passwords are never printed.
 
+// On your computer the values live in .env; on Vercel they are injected (existing values win).
+try {
+  process.loadEnvFile(".env");
+} catch {}
+
 const problems = [];
 
 function check(name, { port, pgbouncer }) {

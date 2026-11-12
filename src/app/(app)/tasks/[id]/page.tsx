@@ -13,7 +13,8 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const me = await requireUser();
   const admin = me.role === "ADMIN";
-  const task = await db.task.findUnique({
+  const [task, employees, clients] = await Promise.all([
+    db.task.findUnique({
     where: { id },
     include: {
       client: { select: { id: true, name: true } },
@@ -24,13 +25,11 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
       previous: { select: { id: true, dueDate: true } },
       next: { select: { id: true, dueDate: true } },
     },
-  });
-  if (!task || (!admin && task.assigneeId !== me.id && task.createdById !== me.id)) notFound();
-
-  const [employees, clients] = await Promise.all([
+    }),
     db.user.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     db.client.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
+  if (!task || (!admin && task.assigneeId !== me.id && task.createdById !== me.id)) notFound();
   const today = todayIST();
   const due = relativeDue(ymd(task.dueDate), task.status, today);
 

@@ -1,8 +1,10 @@
 import "server-only";
 import { db } from "./db";
 
-/** In-app notification for `userId`, unless they caused it themselves. */
-export async function notify(userId: string, actorId: string, title: string, link?: string, body?: string) {
-  if (userId === actorId) return;
-  await db.notification.create({ data: { userId, title, link, body } });
+/** In-app notification for each user in `userIds` (one DB call), skipping whoever caused it. */
+export async function notify(userIds: string | Iterable<string | null | undefined>, actorId: string, title: string, link?: string, body?: string) {
+  const ids = new Set(typeof userIds === "string" ? [userIds] : [...userIds].filter((x): x is string => !!x));
+  ids.delete(actorId);
+  if (!ids.size) return;
+  await db.notification.createMany({ data: [...ids].map((userId) => ({ userId, title, link, body })) });
 }

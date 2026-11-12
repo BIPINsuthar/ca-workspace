@@ -131,6 +131,12 @@ From then on, every push to `main` redeploys automatically.
 
 ---
 
+## Performance notes
+
+- `vercel.json` pins the server to Vercel's **Tokyo** region (`hnd1`), next to the Supabase database (`ap-northeast-1`). Every page runs several database queries, so keeping the server next to the database matters most. **If you move the database, change the region to match** (Mumbai `ap-south-1` → `"bom1"`, Singapore `ap-southeast-1` → `"sin1"`).
+- Relations load with one JOIN query each (Prisma `relationJoins`). Independent queries and writes run in parallel.
+- Each section has a loading skeleton, so tab switches respond instantly. Visited pages stay cached in the browser for 30 seconds, and any save clears that cache.
+
 ## Scripts
 
 | Command | Purpose |

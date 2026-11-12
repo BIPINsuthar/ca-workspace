@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { KeyRound, Pencil, Plus, UserCheck, UserX } from "lucide-react";
 import { resetPassword, saveEmployee, toggleEmployeeActive } from "@/app/actions/employees";
 import { ActionForm, ConfirmButton, Modal, Submit } from "@/components/forms";
@@ -9,7 +8,6 @@ import { Field } from "@/components/ui";
 type U = { id: string; name: string; email: string; role: "ADMIN" | "EMPLOYEE"; designation: string | null; mobile: string | null; joinedOn: string; active: boolean };
 
 export function EmployeeFormModal({ user, self }: { user?: U; self?: boolean }) {
-  const router = useRouter();
   return (
     <Modal
       title={user ? `Edit ${user.name}` : "New employee login"}
@@ -23,7 +21,7 @@ export function EmployeeFormModal({ user, self }: { user?: U; self?: boolean }) 
       }
     >
       {(close) => (
-        <ActionForm action={saveEmployee} onDone={() => { close(); router.refresh(); }}>
+        <ActionForm action={saveEmployee} onDone={close}>
           {user && <input type="hidden" name="id" value={user.id} />}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Full name *" className="sm:col-span-2"><input name="name" required defaultValue={user?.name} className="field" /></Field>

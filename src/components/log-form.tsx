@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { deleteClientLog, saveClientLog } from "@/app/actions/clients";
 import { LOG_TYPES, todayIST } from "@/lib/format";
@@ -10,7 +9,6 @@ import { Field } from "./ui";
 export type LogValues = { id: string; clientId: string; date: string; type: string; summary: string; contactPerson: string | null; followUpOn: string };
 
 export function LogFormModal({ clients, fixedClientId, log }: { clients: { id: string; name: string }[]; fixedClientId?: string; log?: LogValues }) {
-  const router = useRouter();
   return (
     <Modal
       title={log ? "Edit communication" : "Log client communication"}
@@ -24,7 +22,7 @@ export function LogFormModal({ clients, fixedClientId, log }: { clients: { id: s
       }
     >
       {(close) => (
-        <ActionForm action={saveClientLog} onDone={() => { close(); router.refresh(); }}>
+        <ActionForm action={saveClientLog} onDone={close}>
           {log && <input type="hidden" name="id" value={log.id} />}
           <div className="grid gap-4 sm:grid-cols-2">
             {fixedClientId ? (

@@ -13,7 +13,8 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   const { id } = await params;
   const me = await requireUser();
   const admin = me.role === "ADMIN";
-  const c = await db.client.findUnique({
+  const [c, employees, clients] = await Promise.all([
+    db.client.findUnique({
     where: { id },
     include: {
       partners: true,
@@ -26,13 +27,12 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
       },
       logs: { orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: 50, include: { loggedBy: { select: { id: true, name: true } } } },
     },
-  });
-  if (!c) notFound();
-  const today = todayIST();
-  const [employees, clients] = await Promise.all([
+    }),
     db.user.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     db.client.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
+  if (!c) notFound();
+  const today = todayIST();
   const open = c.tasks.filter((t) => t.status !== "COMPLETED");
   const done = c.tasks.filter((t) => t.status === "COMPLETED");
 

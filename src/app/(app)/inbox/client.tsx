@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Check, Pencil, Plus, RotateCcw, Send, Trash2 } from "lucide-react";
 import { deleteReminder, markNotificationsRead, saveReminder, sendMessage, toggleReminder } from "@/app/actions/inbox";
 import { ActionForm, ConfirmButton, Modal, Submit } from "@/components/forms";
@@ -17,9 +16,8 @@ export function ThreadScroller({ children }: { children: React.ReactNode }) {
 }
 
 export function MessageComposer({ recipientId, name }: { recipientId: string; name: string }) {
-  const router = useRouter();
   return (
-    <ActionForm action={sendMessage} resetOnSuccess onDone={() => router.refresh()} className="border-t border-line p-3">
+    <ActionForm action={sendMessage} resetOnSuccess className="border-t border-line p-3">
       <input type="hidden" name="recipientId" value={recipientId} />
       <div className="flex items-end gap-2">
         <textarea
@@ -45,7 +43,6 @@ export function MessageComposer({ recipientId, name }: { recipientId: string; na
 type R = { id: string; title: string; note: string | null; remindOn: string; done: boolean };
 
 export function ReminderFormModal({ r }: { r?: R }) {
-  const router = useRouter();
   return (
     <Modal
       title={r ? "Edit reminder" : "New reminder"}
@@ -58,7 +55,7 @@ export function ReminderFormModal({ r }: { r?: R }) {
       }
     >
       {(close) => (
-        <ActionForm action={saveReminder} onDone={() => { close(); router.refresh(); }}>
+        <ActionForm action={saveReminder} onDone={close}>
           {r && <input type="hidden" name="id" value={r.id} />}
           <div className="space-y-4">
             <Field label="Title *"><input name="title" required defaultValue={r?.title} className="field" placeholder="Renew practising certificate" /></Field>

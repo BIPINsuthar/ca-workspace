@@ -16,8 +16,10 @@ export async function sendMessage(_: ActionState, fd: FormData): Promise<ActionS
   if (recipientId === me.id) return fail("You can't message yourself.");
   const r = await db.user.findUnique({ where: { id: recipientId }, select: { active: true } });
   if (!r?.active) return fail("That user is inactive.");
-  await db.message.create({ data: { senderId: me.id, recipientId, body, subject: str(fd, "subject") } });
-  await notify(recipientId, me.id, `New message from ${me.name}`, `/inbox?tab=messages&with=${me.id}`, body.slice(0, 140));
+  await Promise.all([
+    db.message.create({ data: { senderId: me.id, recipientId, body, subject: str(fd, "subject") } }),
+    notify(recipientId, me.id, `New message from ${me.name}`, `/inbox?tab=messages&with=${me.id}`, body.slice(0, 140)),
+  ]);
   revalidatePath("/inbox");
   return ok(undefined, recipientId);
 }
@@ -59,11 +61,11 @@ export async function deleteReminder(id: string) {
 export async function markNotificationsRead() {
   const me = await requireUser();
   await db.notification.updateMany({ where: { userId: me.id, readAt: null }, data: { readAt: new Date() } });
-  revalidatePath("/", "layout");
+  revalidatePath("/inbox");
 }
 
 export async function openNotification(id: string) {
   const me = await requireUser();
+  // No revalidation: the bell already shows it as read, and re-rendering every page here would slow navigation.
   await db.notification.updateMany({ where: { id, userId: me.id }, data: { readAt: new Date() } });
-  revalidatePath("/", "layout");
 }

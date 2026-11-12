@@ -62,8 +62,7 @@ export function TaskFormModal({
           action={saveTask}
           onDone={() => {
             close();
-            if (defaultOpen) router.replace("/tasks");
-            router.refresh();
+            if (defaultOpen) router.replace("/tasks", { scroll: false });
           }}
         >
           {task && <input type="hidden" name="id" value={task.id} />}

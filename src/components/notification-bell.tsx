@@ -9,8 +9,12 @@ import { cx } from "./ui";
 
 type Item = { id: string; title: string; body: string | null; link: string | null; read: boolean; at: string };
 
-export function NotificationBell({ unread, items }: { unread: number; items: Item[] }) {
+export function NotificationBell({ unread: serverUnread, items: serverItems }: { unread: number; items: Item[] }) {
   const [open, setOpen] = useState(false);
+  // Local copy so "read" shows instantly; resyncs whenever the server sends fresh data.
+  const [items, setItems] = useState(serverItems);
+  useEffect(() => setItems(serverItems), [serverItems]);
+  const unread = Math.min(serverUnread, items.filter((n) => !n.read).length);
   const ref = useRef<HTMLDivElement>(null);
   const router = useRouter();
   useEffect(() => {
@@ -30,7 +34,15 @@ export function NotificationBell({ unread, items }: { unread: number; items: Ite
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <p className="text-sm font-semibold">Notifications</p>
             {unread > 0 && (
-              <button onClick={() => markNotificationsRead()} className="text-xs text-blue-300 hover:underline">Mark all read</button>
+              <button
+                onClick={() => {
+                  setItems((xs) => xs.map((x) => ({ ...x, read: true })));
+                  markNotificationsRead();
+                }}
+                className="text-xs text-blue-300 hover:underline"
+              >
+                Mark all read
+              </button>
             )}
           </div>
           <div className="max-h-96 overflow-y-auto">
@@ -38,10 +50,11 @@ export function NotificationBell({ unread, items }: { unread: number; items: Ite
             {items.map((n) => (
               <button
                 key={n.id}
-                onClick={async () => {
+                onClick={() => {
                   setOpen(false);
-                  await openNotification(n.id);
+                  setItems((xs) => xs.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
                   if (n.link) router.push(n.link);
+                  if (!n.read) openNotification(n.id); // background; no need to wait
                 }}
                 className={cx("block w-full border-b border-line/60 px-4 py-3 text-left transition last:border-0 hover:bg-panel-2", !n.read && "bg-brand/5")}
               >

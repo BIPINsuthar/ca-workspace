@@ -24,13 +24,21 @@ export type BoardTask = {
 
 const COLUMNS: StatusKey[] = ["PENDING", "IN_PROGRESS", "REVIEW", "COMPLETED"];
 
-export function StatusSelect({ id, status, className }: { id: string; status: StatusKey; className?: string }) {
-  const [pending, start] = useTransition();
+export function StatusSelect({ id, status, className, onChange }: { id: string; status: StatusKey; className?: string; onChange?: (s: StatusKey) => void }) {
+  // Shows the new status immediately; the server catches up in the background.
+  const [shown, setShown] = useOptimistic(status);
+  const [, start] = useTransition();
   return (
     <select
-      value={status}
-      disabled={pending}
-      onChange={(e) => start(() => setTaskStatus(id, e.target.value as StatusKey))}
+      value={shown}
+      onChange={(e) => {
+        const next = e.target.value as StatusKey;
+        start(async () => {
+          setShown(next);
+          onChange?.(next);
+          await setTaskStatus(id, next);
+        });
+      }}
       className={cx("field w-auto py-1 text-xs", className)}
       aria-label="Status"
       onClick={(e) => e.stopPropagation()}
@@ -122,7 +130,7 @@ export function TaskBoard({ tasks, today }: { tasks: BoardTask[]; today: string 
                       <span className="truncate">{t.assignee ?? "Unassigned"}</span>
                       {t.comments > 0 && <span className="flex items-center gap-0.5 text-faint"><MessageSquare className="size-3" />{t.comments}</span>}
                     </span>
-                    <StatusSelect id={t.id} status={t.status} />
+                    <StatusSelect id={t.id} status={t.status} onChange={(status) => move({ id: t.id, status })} />
                   </footer>
                 </article>
               ))}

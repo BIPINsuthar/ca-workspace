@@ -1,5 +1,7 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import type { LogType, Prisma } from "@prisma/client";
+import { Bone } from "@/components/skeleton";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { fmtDate, fmtDateTime, LOG_TYPES, todayIST, ymd } from "@/lib/format";
@@ -17,30 +19,44 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const me = await requireUser();
   const tab = ["messages", "logs", "reminders", "notifications"].includes(sp.tab ?? "") ? sp.tab! : "messages";
 
-  const [unreadMsgs, dueReminders, unreadNotes] = await Promise.all([
-    db.message.count({ where: { recipientId: me.id, readAt: null } }),
-    db.reminder.count({ where: { userId: me.id, done: false, remindOn: { lte: new Date(todayIST() + "T00:00:00Z") } } }),
-    db.notification.count({ where: { userId: me.id, readAt: null } }),
-  ]);
-
+  // Tab badges and tab content load in parallel (each in its own Suspense boundary).
   return (
     <>
       <PageHeader title="Inbox" subtitle="Team messages, client communication, reminders and alerts." />
-      <Tabs
-        active={tab}
-        items={[
-          { key: "messages", label: "Team messages", href: "/inbox?tab=messages", count: unreadMsgs },
-          { key: "logs", label: "Client logs", href: "/inbox?tab=logs" },
-          { key: "reminders", label: "Reminders", href: "/inbox?tab=reminders", count: dueReminders },
-          { key: "notifications", label: "Notifications", href: "/inbox?tab=notifications", count: unreadNotes },
-        ]}
-      />
-      {tab === "messages" && <Messages me={me} withId={sp.with} />}
-      {tab === "logs" && <Logs me={me} sp={sp} />}
-      {tab === "reminders" && <Reminders userId={me.id} />}
-      {tab === "notifications" && <Notifications userId={me.id} />}
+      <Suspense fallback={<InboxTabs active={tab} />}>
+        <InboxTabsWithCounts active={tab} userId={me.id} />
+      </Suspense>
+      <Suspense key={`${tab}-${sp.with ?? ""}`} fallback={<Bone className="h-[60dvh] rounded-2xl" />}>
+        {tab === "messages" && <Messages me={me} withId={sp.with} />}
+        {tab === "logs" && <Logs me={me} sp={sp} />}
+        {tab === "reminders" && <Reminders userId={me.id} />}
+        {tab === "notifications" && <Notifications userId={me.id} />}
+      </Suspense>
     </>
   );
+}
+
+function InboxTabs({ active, counts = [0, 0, 0] }: { active: string; counts?: number[] }) {
+  return (
+    <Tabs
+      active={active}
+      items={[
+        { key: "messages", label: "Team messages", href: "/inbox?tab=messages", count: counts[0] },
+        { key: "logs", label: "Client logs", href: "/inbox?tab=logs" },
+        { key: "reminders", label: "Reminders", href: "/inbox?tab=reminders", count: counts[1] },
+        { key: "notifications", label: "Notifications", href: "/inbox?tab=notifications", count: counts[2] },
+      ]}
+    />
+  );
+}
+
+async function InboxTabsWithCounts({ active, userId }: { active: string; userId: string }) {
+  const counts = await Promise.all([
+    db.message.count({ where: { recipientId: userId, readAt: null } }),
+    db.reminder.count({ where: { userId, done: false, remindOn: { lte: new Date(todayIST() + "T00:00:00Z") } } }),
+    db.notification.count({ where: { userId, readAt: null } }),
+  ]);
+  return <InboxTabs active={active} counts={counts} />;
 }
 
 async function Messages({ me, withId }: { me: { id: string }; withId?: string }) {
@@ -65,14 +81,16 @@ async function Messages({ me, withId }: { me: { id: string }; withId?: string })
 
   let thread: { id: string; body: string; subject: string | null; createdAt: Date; senderId: string }[] = [];
   if (other) {
-    await db.message.updateMany({ where: { senderId: other.id, recipientId: me.id, readAt: null }, data: { readAt: new Date() } });
     unreadBy.delete(other.id);
-    thread = await db.message.findMany({
-      where: { OR: [{ senderId: me.id, recipientId: other.id }, { senderId: other.id, recipientId: me.id }] },
-      orderBy: { createdAt: "asc" },
-      take: 500,
-      select: { id: true, body: true, subject: true, createdAt: true, senderId: true },
-    });
+    [thread] = await Promise.all([
+      db.message.findMany({
+        where: { OR: [{ senderId: me.id, recipientId: other.id }, { senderId: other.id, recipientId: me.id }] },
+        orderBy: { createdAt: "asc" },
+        take: 500,
+        select: { id: true, body: true, subject: true, createdAt: true, senderId: true },
+      }),
+      db.message.updateMany({ where: { senderId: other.id, recipientId: me.id, readAt: null }, data: { readAt: new Date() } }),
+    ]);
   }
 
   return (
