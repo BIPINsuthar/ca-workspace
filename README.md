@@ -102,20 +102,17 @@ Open http://localhost:3000 and sign in with `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PAS
    ```
 
 2. In Vercel, click **Add New… → Project**, pick `ca-workspace`, then **Import**.
-3. Open **Environment Variables** and add every line from your `.env`: `DATABASE_URL`, `DIRECT_URL`, `AUTH_SECRET`, `FIRM_NAME` and `FIRM_TAGLINE`. The `SEED_*` values are only needed on your computer.
-4. Click **Deploy**. You'll get a link like `https://ca-workspace-xxxx.vercel.app`.
-5. **Create the tables and your admin login once.** On your computer, with `.env` pointing at the Neon database, run:
+3. Open **Environment Variables** and add:
+   `DATABASE_URL`, `DIRECT_URL`, `AUTH_SECRET`, `FIRM_NAME`, `FIRM_TAGLINE`,
+   plus your first admin login: `SEED_ADMIN_NAME`, `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`.
+4. Click **Deploy**. Every build automatically:
+   - creates or updates the database tables (`prisma db push`; it refuses changes that would delete data),
+   - turns on row level security for every table, so Supabase's public Data API can't read them,
+   - creates the admin login if it doesn't exist yet. It never changes an existing password.
+5. Open your link (e.g. `https://ca-workspace-xxxx.vercel.app`), sign in with the admin email and password, and change the password under **My profile**.
+6. Optional: add your own domain (e.g. `work.yourfirm.in`) in Vercel under Project → Settings → Domains.
 
-   ```bash
-   npm run db:push
-   ```
-
-   ```bash
-   npm run db:seed
-   ```
-
-6. Open your Vercel link, sign in, and go to **My profile** to change the password.
-7. Optional: add your own domain (for example `work.yourfirm.in`) in Vercel under Project → Settings → Domains.
+No commands on your computer are needed. (Running `npm run db:push` / `npm run db:seed` locally still works if you prefer.)
 
 From then on, every push to `main` redeploys automatically.
 

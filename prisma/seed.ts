@@ -15,12 +15,27 @@ const day = (offset: number) => {
   return d;
 };
 
+/** Supabase exposes public tables through its Data API; lock them (the app connects as the table owner, so it is unaffected). */
+async function lockTables() {
+  await db.$executeRawUnsafe(`
+    DO $$
+    DECLARE t record;
+    BEGIN
+      FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+        EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t.tablename);
+      END LOOP;
+    END $$;`);
+  console.log("✔ Row level security enabled on all tables");
+}
+
 async function main() {
+  await lockTables();
   const email = (process.env.SEED_ADMIN_EMAIL || "").trim().toLowerCase();
   const password = process.env.SEED_ADMIN_PASSWORD || "";
   const name = process.env.SEED_ADMIN_NAME || "Firm Admin";
   if (!email || password.length < 8) {
-    throw new Error("Set SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD (8+ characters) in .env first.");
+    if ((await db.user.count({ where: { role: "ADMIN" } })) > 0) return; // already set up
+    throw new Error("No admin exists yet. Set SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD (8+ characters) in your environment variables.");
   }
 
   const existing = await db.user.findUnique({ where: { email } });
