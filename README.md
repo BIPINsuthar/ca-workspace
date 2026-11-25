@@ -133,9 +133,17 @@ From then on, every push to `main` redeploys automatically.
 
 ## Performance notes
 
-- `vercel.json` pins the server to Vercel's **Tokyo** region (`hnd1`), next to the Supabase database (`ap-northeast-1`). Every page runs several database queries, so keeping the server next to the database matters most. **If you move the database, change the region to match** (Mumbai `ap-south-1` → `"bom1"`, Singapore `ap-southeast-1` → `"sin1"`).
+- **Server region:** set it in Vercel under **Settings → Functions → Function Region**, and pick the region closest to your database (Supabase Mumbai `ap-south-1` → **Mumbai, bom1**; Tokyo `ap-northeast-1` → **Tokyo, hnd1**). Every page runs several database queries, so keeping the server next to the database matters most. Redeploy after changing it.
 - Relations load with one JOIN query each (Prisma `relationJoins`). Independent queries and writes run in parallel.
 - Each section has a loading skeleton, so tab switches respond instantly. Visited pages stay cached in the browser for 30 seconds, and any save clears that cache.
+
+## Backup and moving the database
+
+Admins have a **Backup** page:
+- **Download backup** saves every user (with their logins), client, partner, task, comment, message, client log and reminder as one JSON file. Keep it private.
+- **Restore backup** loads that file into a **new, empty** workspace. It refuses to run if the workspace already has clients, tasks or logs, so it can't overwrite real data. Afterwards everyone signs in with their old email and password.
+
+To move to a new database (for example a Supabase project in another region): download a backup, point `DATABASE_URL`/`DIRECT_URL` at the new database, redeploy, sign in with the `SEED_ADMIN_*` login, and restore the file. Uploads are limited to about 4 MB, which holds many thousands of tasks.
 
 ## Scripts
 

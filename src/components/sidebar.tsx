@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Building2, Calculator, ClipboardList, Inbox, LayoutDashboard, LogOut, Menu, UserCog, Users, X } from "lucide-react";
+import { Building2, Calculator, DatabaseBackup, ClipboardList, Inbox, LayoutDashboard, LogOut, Menu, UserCog, Users, X } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 import { Avatar, cx } from "./ui";
 
@@ -26,6 +26,7 @@ export function Sidebar({ user, firm, tagline, inboxCount, bell }: Props) {
     { href: "/clients", label: "Clients", icon: Building2 },
     ...(user.role === "ADMIN" ? [{ href: "/employees", label: "Employees", icon: Users }] : []),
     { href: "/inbox", label: "Inbox", icon: Inbox, count: inboxCount },
+    ...(user.role === "ADMIN" ? [{ href: "/backup", label: "Backup", icon: DatabaseBackup }] : []),
   ];
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
 
