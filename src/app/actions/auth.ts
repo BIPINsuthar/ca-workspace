@@ -17,7 +17,15 @@ export async function login(_: ActionState, fd: FormData): Promise<ActionState> 
   const a = attempts.get(email);
   if (a && a.until > Date.now()) return fail("Too many attempts. Try again in a few minutes.");
 
-  const user = await db.user.findUnique({ where: { email } });
+  let user;
+  try {
+    user = await db.user.findUnique({ where: { email } });
+  } catch (e) {
+    console.error("Login: database unreachable", e);
+    return fail(
+      "Can't connect to the database right now. If you use Supabase's free plan, the project may be paused. Open your Supabase dashboard and click \"Restore project\", then try again in a few minutes.",
+    );
+  }
   const valid = user ? await bcrypt.compare(password, user.passwordHash) : false;
   if (!user || !valid) {
     const n = (a?.n ?? 0) + 1;
